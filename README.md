@@ -6,6 +6,13 @@
 Draw or import vector artwork, animate it on a keyframe timeline with easing, and export a lightweight
 **animated SVG** that plays anywhere without JavaScript. You can also export a WebM video or PNG frames.
 
+### ▶ [Open Animora in your browser: itsrajverma.github.io/animora](https://itsrajverma.github.io/animora/)
+
+Nothing to install and no account to create. Open the link and start animating.
+
+[![Deploy to GitHub Pages](https://github.com/itsrajverma/animora/actions/workflows/deploy.yml/badge.svg)](https://github.com/itsrajverma/animora/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-7c6cf2.svg)](LICENSE)
+
 ![Animora editor](docs/screenshot.png)
 
 ## Features
@@ -43,10 +50,12 @@ Draw or import vector artwork, animate it on a keyframe timeline with easing, an
 - Export **WebM video**, **PNG** frame (2×), static SVG frame
 - Save/open project files (`.animora.json`); automatic local save in the browser
 
-## Getting started
+## Run it locally
+
+Just want to use it? Go to **https://itsrajverma.github.io/animora/**. To run or develop it on your own machine:
 
 ```bash
-git clone <your-fork-url> animora
+git clone https://github.com/itsrajverma/animora.git
 cd animora
 npm install
 npm run dev
