@@ -11,6 +11,9 @@ interface NumProps {
   max?: number;
   unit?: string;
   title?: string;
+  /** Show the (draggable) label as a small suffix inside the box, SVGator style. */
+  suffix?: boolean;
+  disabled?: boolean;
 }
 
 const clamp = (v: number, min?: number, max?: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
@@ -20,7 +23,7 @@ const round = (v: number, step: number) => {
 };
 
 /** Numeric input whose label can be dragged horizontally to scrub the value. */
-export function NumberField({ label, value, onChange, step = 1, min, max, unit, title }: NumProps) {
+export function NumberField({ label, value, onChange, step = 1, min, max, unit, title, suffix, disabled }: NumProps) {
   const [text, setText] = useState<string | null>(null);
   const keyRef = useRef('');
   const shown = text ?? String(round(value, step));
@@ -52,10 +55,12 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
     el.addEventListener('pointerup', up);
   };
 
+  const labelEl = <span className="num-label" onPointerDown={disabled ? undefined : startScrub}>{label}</span>;
   return (
-    <div className="num-field" title={title}>
-      <span className="num-label" onPointerDown={startScrub}>{label}</span>
+    <div className={`num-field ${suffix ? 'suffix' : ''} ${disabled ? 'disabled' : ''}`} title={title}>
+      {!suffix && labelEl}
       <input
+        disabled={disabled}
         value={shown}
         onChange={(e) => setText(e.target.value)}
         onFocus={(e) => e.target.select()}
@@ -75,6 +80,7 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
         }}
       />
       {unit && <span className="num-unit">{unit}</span>}
+      {suffix && labelEl}
     </div>
   );
 }

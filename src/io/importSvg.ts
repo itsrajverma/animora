@@ -212,12 +212,14 @@ export function importSvgText(text: string): ImportResult {
             ax: c.x, ay: c.y,
             lineCap: cs.strokeLinecap !== 'butt' ? cs.strokeLinecap : undefined,
             lineJoin: cs.strokeLinejoin !== 'miter' ? cs.strokeLinejoin : undefined,
+            fillRule: cs.fillRule === 'evenodd' ? 'evenodd' : undefined,
           }, {
             x: c.x, y: c.y, d,
             fill: paint(cs.fill, cs.fillOpacity),
             stroke,
             strokeWidth: stroke === 'none' ? 0 : parseFloat(cs.strokeWidth) || 0,
             opacity: Math.round(opacity * 1000) / 1000,
+            ...(cs.strokeDasharray && cs.strokeDasharray !== 'none' ? { dashArray: cs.strokeDasharray.replace(/px/g, '') } : {}),
           }));
           continue;
         }

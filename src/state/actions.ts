@@ -1,11 +1,12 @@
 import { produce, type Draft } from 'immer';
 import type { Doc, Keyframe, KfRef, PropKey, SvgEl, Tool, Value } from '../model/types';
-import { PROP_META, supports } from '../model/props';
+import { PROP_META, staticValue, supports } from '../model/props';
 import { cloneElement, createElement, migrateDoc, newDoc, uid } from '../model/factory';
 import { findById, flatten, locate } from '../model/tree';
 import { DEFAULT_EASING } from '../engine/easing';
 import { frameAt, valueAt } from '../engine/interpolate';
 import { ellipsePath, mapPath, rectPath } from '../engine/path';
+import { pointAtPercent } from '../engine/motion';
 import { getState, setState } from './store';
 
 const EPS = 0.004;
@@ -122,10 +123,17 @@ export function setValues(changes: Change[], key?: string) {
     for (const [id, prop, value] of changes) {
       const el = findEl(d, id);
       if (!el || !supports(el.type, prop)) continue;
+      // An element on a motion path is moved by moving its path.
+      if (el.motionPath && (prop === 'x' || prop === 'y')) {
+        const p = pointAtPercent(el.motionPath, Number(valueAt(el as SvgEl, 'motion', time)));
+        const dv = Number(value) - (prop === 'x' ? p.x : p.y);
+        if (dv) el.motionPath = mapPath(el.motionPath, (x, y) => (prop === 'x' ? [x + dv, y] : [x, y + dv]));
+        continue;
+      }
       const tr = el.tracks[prop];
       if (tr && tr.length) upsert(tr, time, value);
       else if (recordMode) {
-        const base = el.props[prop] ?? PROP_META[prop].def;
+        const base = staticValue(el as SvgEl, prop);
         el.tracks[prop] = time > EPS ? [mkKf(0, base), mkKf(time, value)] : [mkKf(0, value)];
         created.push(id);
       } else el.props[prop] = value;
@@ -161,6 +169,8 @@ export function patchDoc(patch: Partial<Omit<Doc, 'elements'>>, key?: string) {
 
 // ---------------------------------------------------------------------------
 // Keyframes
+
+export { mkKf, upsert, EPS };
 
 export function addKeyframe(elId: string, prop: PropKey, time = getState().time) {
   const el = getEl(elId);
@@ -322,6 +332,10 @@ export function duplicateSelection() {
 }
 
 export function offsetElement(el: SvgEl | Draft<SvgEl>, dx: number, dy: number) {
+  if (el.motionPath) {
+    el.motionPath = mapPath(el.motionPath, (x, y) => [x + dx, y + dy]);
+    return;
+  }
   for (const [p, dv] of [['x', dx], ['y', dy]] as const) {
     if (!dv) continue;
     const tr = el.tracks[p];

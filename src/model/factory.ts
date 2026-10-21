@@ -40,8 +40,15 @@ export function newDoc(): Doc {
     background: '#ffffff',
     duration: 3,
     loop: true,
+    iterations: 1,
+    direction: 'normal',
+    trigger: 'load',
+    fillMode: 'freeze',
+    speed: 100,
     elements: [],
     defs: '',
+    guides: { x: [], y: [] },
+    comments: [],
   };
 }
 
@@ -66,6 +73,8 @@ export function migrateDoc(raw: unknown): Doc {
     ...d,
     version: 1,
     defs: d.defs ?? '',
+    guides: { x: d.guides?.x ?? [], y: d.guides?.y ?? [] },
+    comments: Array.isArray(d.comments) ? d.comments : [],
     elements: d.elements.map(migrateEl),
   };
 }
@@ -79,10 +88,10 @@ function migrateEl(e: SvgEl): SvgEl {
 // ---------------------------------------------------------------------------
 // Demo project shown on first launch.
 
-type K = [number, Value, string?];
-const track = (keys: K[]): Keyframe[] => keys.map(([time, value, easing]) => ({ id: uid(), time, value, easing: easing ?? 'easeInOut' }));
+export type K = [number, Value, string?];
+export const track = (keys: K[]): Keyframe[] => keys.map(([time, value, easing]) => ({ id: uid(), time, value, easing: easing ?? 'easeInOut' }));
 
-function withTracks(el: SvgEl, t: Partial<Record<PropKey, K[]>>): SvgEl {
+export function withTracks(el: SvgEl, t: Partial<Record<PropKey, K[]>>): SvgEl {
   for (const [p, keys] of Object.entries(t)) el.tracks[p as PropKey] = track(keys!);
   return el;
 }

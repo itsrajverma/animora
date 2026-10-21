@@ -17,38 +17,45 @@ Nothing to install and no account to create. Open the link and start animating.
 
 ## Features
 
-**Layers, groups & merging**
-- Layers panel with nested **groups**: drag layers to reorder or drop them *into* groups
-- **Group** (Ctrl+G), **Ungroup** (Ctrl+Shift+G) and **Merge into one shape** (Ctrl+E). Transforms are rebased, so nothing jumps
-- Double-click a group to edit the layers inside it (Ctrl+click selects deep layers directly); groups can be animated too
-- Imported SVGs keep their original group hierarchy, wrapped in one group named after the file
-- Right-click menu, floating selection bar, align & distribute
+The editor follows SVGator's layout: a tool bar on top, **Elements / Library / Templates** on the left,
+**Properties / Comments** on the right, and a full-width timeline with an **Animate** button.
+
+**Animators** (SVGator style: pick one from *Animate*, or press Shift + key)
+- Morph (⇧M), Position (⇧P), Motion path, Origin (⇧A), Scale (⇧S), Rotate (⇧R), Skew (⇧K), Size, Corner radius, Font size
+- Opacity (⇧O), Fill color (⇧C), Fill opacity, Stroke color (⇧B), Stroke opacity, Stroke width (⇧W),
+  Stroke offset (⇧F), Stroke dashes (⇧D), Draw stroke, Filters: blur and drop shadow (⇧L)
+- **Motion paths**: *Set motion path* and click any path (or create a default one), edit its nodes on the canvas,
+  animate the offset, *auto orient* along the curve
+- **Masks**: put a shape on top, select it with the layers below, *Create mask*
+- **Draggable transform origin** with snapping to the box corners and center; *Center origin*
+
+**Timeline**
+- One row per animator; drag keyframes, drag the bar between two keyframes to move both, box-select by dragging
+- Right-click menu: copy, paste at playhead, duplicate, reverse keyframes, quick easings, delete
+- 30+ easings, **step easings** (step start / end ×N), a draggable custom cubic-bezier editor with **saved curves**
+- Draggable end marker to set the animation length, editable time display, timeline zoom, loop preview
+- Position keyframes show their trajectory on the canvas
 
 **Drawing & editing**
-- Floating tool dock: rectangle, ellipse, line, star, polygon, pen (straight + Bézier curves) and text
-- Built-in shape library (heart, arrow, bubble, bolt, ring, check mark…)
-- Select, move, resize (Shift = keep ratio, Alt = from center), rotate (Shift = 15° steps), marquee select
-- Node editing for paths (double-click a shape), convert shapes to paths
-- Layers in the timeline: rename, reorder by drag & drop, hide, lock
-- Align to artboard, z-order, duplicate, copy/paste, undo/redo, keyboard shortcuts
-- Zoom & pan (Ctrl + wheel, wheel, middle mouse, hand tool); dark and light themes
+- Tools: transform, node, pen, line, rectangle, ellipse, polygon, star, text, hand
+- Rulers with draggable **guides**, grid, **snapping** (objects, guides, grid, pixels), zoom & fit
+- Group, ungroup, merge into one path, move up/down, flip, rotate ±90°, align & distribute
+- Properties: position/size, transforms, opacity, **blend modes**, fill & stroke (opacity, caps, joins, dashes,
+  path length with *Set as offset*), fill rule, text (font, weight, alignment, letter spacing), filters
 
-**Animation**
-- Keyframe timeline per property: position, rotation, scale, opacity, fill, stroke, stroke width,
-  width/height, corner radius, font size, **path morphing** and **stroke drawing (trim path)**
-- **Animate mode**: change anything at the playhead and keyframes are created automatically
-- 30+ easing presets (sine, cubic, expo, back, bounce, elastic…) plus a draggable **custom cubic-bezier** editor
-- Drag keyframes to retime them (snaps to the playhead), multi-select with Shift
-- Shape morphing between any paths, including different point counts (paths are normalized automatically)
-- One-click presets: fade, pop, slide, bounce, spin, pulse, shake, draw stroke
-- Loop or play once; adjustable duration
+**Library & templates**
+- Library: your **uploads** and **saved items** (*Save to library*, stored in the browser), symbols, and
+  illustrations (characters, business, devices, food & drinks, nature, icons)
+- 11 animated templates: loader, heartbeat, notification bell, rocket on a motion path, masked text reveal,
+  shape morph, stroke drawing, toggle switch, card hover with filters, ticking clock with step easing
+- Comments tab: notes pinned to a time and an element, saved with the project
 
 **Import / export**
-- Import SVG files (CSS classes, group transforms, gradients and clip paths are preserved) and PNG/JPG/GIF/WebP images
-- Drag & drop files onto the window
-- Export **animated SVG** (SMIL: no JS, works in `<img>` tags and CSS backgrounds)
-- Export **WebM video**, **PNG** frame (2×), static SVG frame
-- Save/open project files (`.animora.json`); automatic local save in the browser
+- Import SVG (groups, CSS classes, transforms, gradients and clip paths are kept) and PNG/JPG/GIF/WebP; drag & drop
+- **Animated SVG** (SMIL, no JavaScript) with start **on load / on mouse over / on click**, iterations,
+  direction (normal, reverse, alternate, alternate reverse), speed and fill mode
+- **GIF**, **WebM video**, **PNG sequence (.zip)**, PNG / static SVG of a frame, project file (`.animora.json`)
+- Automatic local save in the browser
 
 ## Run it locally
 
@@ -71,32 +78,13 @@ A GitHub Actions workflow (`.github/workflows/deploy.yml`) publishes `dist/` to 
 
 ## How animating works
 
-1. Draw a shape or import an SVG.
-2. Leave **Animate mode** on (the red button in the timeline).
-3. Move the playhead, then move, scale, rotate or recolor the shape. A keyframe appears for each changed property.
-4. Click a keyframe diamond to jump to it, then pick its easing (the easing applies from that keyframe to the next).
-5. Click **Preview & Export** to see the standalone file and download it.
+1. Draw a shape, pick something from the Library, start from a Template, or import an SVG.
+2. Select it and click **Animate** in the timeline (or press Shift+P, Shift+S, Shift+R…). A keyframe is added at the playhead.
+3. Move the playhead and change the value on the canvas or in Properties. A new keyframe appears automatically.
+4. Select keyframes and set their easing (curve button in the timeline, or Properties). The easing applies to the next segment.
+5. Click **Export** to preview and download SVG, GIF, video or PNG frames.
 
-For morphing: convert a shape to a path, move the playhead, then either edit its nodes or use **Morph into** to
-take the shape of another layer.
-
-## Keyboard shortcuts
-
-| Key | Action |
-| --- | --- |
-| V / A / H | Select / edit nodes / pan |
-| R / E / L / S / G / P / T | Rectangle / ellipse / line / star / polygon / pen / text |
-| Space | Play / pause |
-| Home / End, `,` / `.` | Jump to start / end, previous / next frame |
-| Delete | Delete selected layers or keyframes |
-| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Ctrl+C / X / V / D | Copy / cut / paste / duplicate |
-| Ctrl+G / Ctrl+Shift+G | Group / ungroup |
-| Ctrl+E | Merge selection into one shape |
-| Enter / Esc | Enter a selected group / leave it |
-| Arrows (+Shift) | Nudge 1px (10px) |
-| Ctrl+S / Ctrl+O / Ctrl+I / Ctrl+Shift+E | Save project / open / import / export SVG |
-| Ctrl+0 | Fit artboard to screen |
+Press `?` in the app for all keyboard shortcuts.
 
 ## Architecture
 
@@ -111,11 +99,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for a code map.
 
 ## Roadmap ideas
 
-- Masks and boolean operations (union / subtract)
-- Gradient editing, filters (blur, shadow)
-- Motion paths (move along a path)
-- CSS / JavaScript-player export options, Lottie export, GIF export
-- Interactive triggers (play on hover / click / scroll)
+- Boolean operations (union / subtract / intersect / exclude)
+- Gradient fills and gradient animation
+- Lottie export, CSS-only and JavaScript-player SVG export, scroll trigger
+- Per-letter text animation
 
 Contributions welcome!
 

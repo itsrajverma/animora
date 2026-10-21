@@ -63,12 +63,20 @@ export function parseTransform(s: string | undefined): Mat {
   return m;
 }
 
-/** translate(x y) rotate(r) scale(sx sy) */
-export const mainMatrix = (f: Frame): Mat => mul(translate(f.x, f.y), mul(rotate(f.rotation), scale(f.scaleX, f.scaleY)));
-/** translate(-ax -ay) [baseTransform] */
-export const innerMatrix = (el: SvgEl): Mat => mul(translate(-el.ax, -el.ay), parseTransform(el.baseTransform));
+const tanDeg = (deg: number) => Math.tan((Math.max(-89, Math.min(89, deg)) * Math.PI) / 180);
+export const skew = (kx: number, ky: number): Mat => mul([1, 0, tanDeg(kx), 1, 0, 0], [1, tanDeg(ky), 0, 1, 0, 0]);
+
+/** translate(x y) rotate(r + motion angle) skewX(kx) skewY(ky) scale(sx sy) */
+export const mainMatrix = (f: Frame): Mat =>
+  mul(translate(f.x, f.y), mul(rotate(f.rotation + f.motionAngle), mul(skew(f.skewX, f.skewY), scale(f.scaleX, f.scaleY))));
+/** translate(-originX -originY) [baseTransform] */
+export const innerMatrix = (el: SvgEl, f: Frame = frameAt(el, 0)): Mat =>
+  mul(translate(-f.originX, -f.originY), parseTransform(el.baseTransform));
 /** Element geometry space → parent space. */
-export const localMatrix = (el: SvgEl, t: number): Mat => mul(mainMatrix(frameAt(el, t)), innerMatrix(el));
+export const localMatrix = (el: SvgEl, t: number): Mat => {
+  const f = frameAt(el, t);
+  return mul(mainMatrix(f), innerMatrix(el, f));
+};
 
 /** Parent space of `id` → artboard space. */
 export function parentToRoot(root: SvgEl[], id: string, t: number): Mat {
@@ -87,7 +95,7 @@ export interface Box { x: number; y: number; w: number; h: number }
 /** Approximate bounding box of an element in its main-local space (after anchor/base transform), without the DOM. */
 export function modelBBox(el: SvgEl, t: number): Box | null {
   const f = frameAt(el, t);
-  const inner = innerMatrix(el);
+  const inner = innerMatrix(el, f);
   let pts: [number, number][] = [];
   if (el.type === 'rect' || el.type === 'ellipse' || el.type === 'image') {
     pts = [[-f.width / 2, -f.height / 2], [f.width / 2, -f.height / 2], [f.width / 2, f.height / 2], [-f.width / 2, f.height / 2]];

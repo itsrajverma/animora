@@ -16,7 +16,7 @@ import { canvasApi } from '../components/canvasApi';
 import { getState, notify, setState } from './store';
 import { expand, findEl, geometryAsPath, offsetElement, select, setValues, updateDoc, type Change } from './actions';
 
-const TRANSFORM_PROPS: PropKey[] = ['x', 'y', 'rotation', 'scaleX', 'scaleY'];
+const TRANSFORM_PROPS: PropKey[] = ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY', 'originX', 'originY', 'motion'];
 
 const bbox = (el: SvgEl, t: number) => canvasApi.localBBox(el.id) ?? modelBBox(el, t);
 
@@ -47,7 +47,10 @@ function rebase(el: Draft<SvgEl>, orig: SvgEl, rel: Mat, t: number) {
     el.baseTransform = toSvgMatrix(mul(rel, localMatrix(orig, t)));
     el.ax = cx;
     el.ay = cy;
-    Object.assign(el.props, { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1 });
+    delete el.props.originX;
+    delete el.props.originY;
+    delete el.motionPath;
+    Object.assign(el.props, { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1, skewX: 0, skewY: 0 });
     return;
   }
   const rot = (Math.atan2(rel[1], rel[0]) * 180) / Math.PI;
@@ -262,6 +265,13 @@ function shiftChanges(ch: Change[], id: string, dx: number, dy: number) {
   const [vx, vy] = apply(pinv, dx, dy);
   const f = frameAt(el, time);
   ch.push([id, 'x', Math.round((f.x + vx - ox) * 10) / 10], [id, 'y', Math.round((f.y + vy - oy) * 10) / 10]);
+}
+
+/** Move layers by an artboard-space offset. */
+export function moveByWorld(ids: string[], dx: number, dy: number, key?: string) {
+  const ch: Change[] = [];
+  for (const id of ids) shiftChanges(ch, id, dx, dy);
+  setValues(ch, key);
 }
 
 /** Align to the artboard (one layer) or to the selection bounds (several). */

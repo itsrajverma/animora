@@ -4,7 +4,20 @@ export interface Easing {
   id: string;
   label: string;
   bezier?: Bezier;
+  /** Step easing: `n` jumps, at the start or the end of each interval. */
+  steps?: { n: number; start: boolean };
   fn: (t: number) => number;
+}
+
+export function stepsEasing(n: number, start: boolean): Easing {
+  n = Math.max(1, Math.min(1000, Math.round(n)));
+  const id = `steps(${n},${start ? 'start' : 'end'})`;
+  return {
+    id,
+    label: `Step ${start ? 'start' : 'end'} ×${n}`,
+    steps: { n, start },
+    fn: (t) => (t >= 1 ? 1 : t <= 0 ? (start ? 1 / n : 0) : Math.min(1, (start ? Math.ceil(t * n) : Math.floor(t * n)) / n)),
+  };
 }
 
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
@@ -140,6 +153,10 @@ export const EASING_GROUPS: { group: string; items: Easing[] }[] = [
       { id: 'elasticIn', label: 'Elastic In', fn: (t) => 1 - elasticOut(1 - t) },
     ],
   },
+  {
+    group: 'Steps',
+    items: [stepsEasing(1, true), stepsEasing(1, false), stepsEasing(4, false), stepsEasing(8, false)],
+  },
 ];
 
 const MAP = new Map<string, Easing>();
@@ -150,6 +167,12 @@ export const DEFAULT_EASING = 'easeInOut';
 export function getEasing(id: string): Easing {
   const known = MAP.get(id);
   if (known) return known;
+  const st = /^steps\((\d+),(start|end)\)$/.exec(id);
+  if (st) {
+    const e = stepsEasing(Number(st[1]), st[2] === 'start');
+    MAP.set(id, e);
+    return e;
+  }
   const m = /^cubic-bezier\(([^)]+)\)$/.exec(id);
   if (m) {
     const v = m[1].split(/[\s,]+/).map(Number);

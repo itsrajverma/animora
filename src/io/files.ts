@@ -75,15 +75,75 @@ export async function exportWebm(doc: Doc, onProgress: (p: number) => void, fps 
 
   await drawFrame(ctx, doc, 0, scale, true);
   rec.start();
-  const frames = Math.max(1, Math.round(doc.duration * fps));
+  const times = cycleTimes(doc, fps);
   const start = performance.now();
-  for (let i = 0; i <= frames; i++) {
-    await drawFrame(ctx, doc, Math.min(doc.duration, i / fps), scale, true);
-    onProgress(i / frames);
+  for (let i = 0; i < times.length; i++) {
+    await drawFrame(ctx, doc, times[i], scale, true);
+    onProgress((i + 1) / times.length);
     const wait = start + ((i + 1) * 1000) / fps - performance.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   }
   rec.stop();
   await stopped;
   download(new Blob(chunks, { type: 'video/webm' }), `${safeName(doc)}.webm`);
+}
+
+/** Frame times for one exported cycle, honoring the playback direction and speed. */
+export function cycleTimes(doc: Doc, fps: number): number[] {
+  const D = Math.max(0.01, doc.duration);
+  const speed = Math.max(1, doc.speed || 100) / 100;
+  const n = Math.max(1, Math.round((D / speed) * fps));
+  const forward = Array.from({ length: n }, (_, i) => (i / n) * D);
+  const back = forward.map((t) => D - t);
+  switch (doc.direction) {
+    case 'reverse': return back;
+    case 'alternate': return [...forward, ...back];
+    case 'alternate-reverse': return [...back, ...forward];
+    default: return forward;
+  }
+}
+
+async function renderFrames(doc: Doc, times: number[], scale: number, opaque: boolean, onProgress: (p: number) => void) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(doc.width * scale));
+  canvas.height = Math.max(1, Math.round(doc.height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const out: Uint8ClampedArray[] = [];
+  for (let i = 0; i < times.length; i++) {
+    await drawFrame(ctx, doc, times[i], scale, opaque);
+    out.push(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
+    onProgress((i + 1) / times.length);
+  }
+  return { frames: out, canvas, ctx };
+}
+
+export async function exportGif(doc: Doc, o: { fps: number; scale: number; transparent: boolean }, onProgress: (p: number) => void) {
+  const { encodeGif } = await import('./gif');
+  const times = cycleTimes(doc, o.fps);
+  const { frames, canvas } = await renderFrames(doc, times, o.scale, !o.transparent, (p) => onProgress(p * 0.8));
+  // Let the progress bar paint before the (synchronous) encode.
+  await new Promise((r) => setTimeout(r, 30));
+  const bytes = encodeGif(frames, {
+    width: canvas.width, height: canvas.height, delay: 1 / o.fps, loops: doc.loop ? 0 : Math.max(1, doc.iterations) - 1, transparent: o.transparent,
+  });
+  onProgress(1);
+  download(new Blob([bytes], { type: 'image/gif' }), `${safeName(doc)}.gif`);
+}
+
+export async function exportPngSequence(doc: Doc, o: { fps: number; scale: number }, onProgress: (p: number) => void) {
+  const { zip } = await import('./zip');
+  const times = cycleTimes(doc, o.fps);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(doc.width * o.scale));
+  canvas.height = Math.max(1, Math.round(doc.height * o.scale));
+  const ctx = canvas.getContext('2d')!;
+  const files: { name: string; data: Uint8Array<ArrayBuffer> }[] = [];
+  const pad = String(times.length).length;
+  for (let i = 0; i < times.length; i++) {
+    await drawFrame(ctx, doc, times[i], o.scale, false);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+    if (blob) files.push({ name: `${safeName(doc)}_${String(i).padStart(pad, '0')}.png`, data: new Uint8Array(await blob.arrayBuffer()) });
+    onProgress((i + 1) / times.length);
+  }
+  download(zip(files), `${safeName(doc)}-frames.zip`);
 }

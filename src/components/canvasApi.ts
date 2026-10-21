@@ -14,6 +14,8 @@ export interface Measured {
   origin: Pt;
   /** Parent space → artboard. */
   P: DOMMatrix;
+  /** Main-local space (origin at 0,0) → artboard. */
+  M: DOMMatrix;
 }
 
 /** Imperative hooks into the mounted canvas (set by <Canvas/>). */
@@ -21,5 +23,8 @@ export const canvasApi = {
   measure: (_id: string): Measured | null => null,
   /** Bounding box from the live DOM, in the element's main-local space. */
   localBBox: (_id: string): Box | null => null,
+  /** Markup and artboard-space box of layers, for library thumbnails. */
+  snapshot: (_ids: string[]): { markup: string; box: Box } | null => null,
   fit: () => {},
+  zoomBy: (_k: number) => {},
 };

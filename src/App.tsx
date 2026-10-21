@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useStore, getState, setState, AUTOSAVE_KEY, notify } from './state/store';
+import { useStore, getState, setState, setView, AUTOSAVE_KEY, notify } from './state/store';
 import {
-  addElement, addElements, copySelection, deleteSelection, duplicateSelection, expand, findEl, openProjectJson, paste, redo, select,
+  copySelection, deleteSelection, duplicateSelection, findEl, openProjectJson, paste, redo, select,
   selectAll, setTime, setTool, setValues, undo, type Change,
 } from './state/actions';
 import { groupSelection, mergeSelection, ungroupSelection } from './state/structure';
-import { createElement } from './model/factory';
+import { addAnimator, animatorForShortcut, copyKeyframes, duplicateKeyframes, pasteKeyframes } from './state/animate';
+import { centerOrigin, startPickMotionPath } from './state/editing';
+import { insertImage, insertSvg } from './state/insert';
 import { frameAt } from './engine/interpolate';
-import { importSvgText, imageSize, readFileAsDataUrl, wrapImport } from './io/importSvg';
+import { readFileAsDataUrl } from './io/importSvg';
 import { exportAnimatedSvg, saveProject } from './io/files';
-import { Header } from './components/Header';
-import { TOOLS } from './components/ToolDock';
+import { TopBar, TOOLS } from './components/TopBar';
 import { Canvas } from './components/Canvas';
 import { canvasApi } from './components/canvasApi';
 import { Timeline, togglePlay } from './components/Timeline';
-import { Inspector } from './components/Inspector';
-import { Sidebar } from './components/Sidebar';
+import { LeftPanel } from './components/LeftPanel';
+import { RightPanel } from './components/RightPanel';
 import { ContextMenu } from './components/ContextMenu';
-import { HelpDialog, PreviewDialog, VideoDialog, WelcomeDialog } from './components/Dialogs';
+import { ExportDialog, HelpDialog, WelcomeDialog } from './components/Dialogs';
+import { Icon } from './components/Icon';
 
 const isTyping = (e: KeyboardEvent) => {
   const t = e.target as HTMLElement;
@@ -25,8 +27,8 @@ const isTyping = (e: KeyboardEvent) => {
 };
 
 export default function App() {
-  const [dialog, setDialog] = useState<'preview' | 'video' | 'help' | null>(null);
-  const [tlHeight, setTlHeight] = useState(240);
+  const [dialog, setDialog] = useState<'export' | 'help' | null>(null);
+  const [tlHeight, setTlHeight] = useState(250);
   const [dropping, setDropping] = useState(false);
   const openRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -34,10 +36,23 @@ export default function App() {
   const theme = useStore((s) => s.theme);
   const toast = useStore((s) => s.toast);
   const showWelcome = useStore((s) => s.showWelcome);
+  const leftOpen = useStore((s) => s.leftOpen);
+  const rightOpen = useStore((s) => s.rightOpen);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    const help = () => setDialog('help');
+    const motion = (e: Event) => startPickMotionPath((e as CustomEvent<string>).detail);
+    window.addEventListener('animora:help', help);
+    window.addEventListener('animora:motionpath', motion);
+    return () => {
+      window.removeEventListener('animora:help', help);
+      window.removeEventListener('animora:motionpath', motion);
+    };
+  }, []);
 
   // ---- playback --------------------------------------------------------------
   useEffect(() => {
@@ -50,7 +65,7 @@ export default function App() {
       let t = s.time + (now - last) / 1000;
       last = now;
       if (t >= D) {
-        if (s.doc.loop) t = t % D;
+        if (s.loopPreview) t = t % D;
         else {
           setState({ time: D, playing: false });
           return;
@@ -92,26 +107,18 @@ export default function App() {
           openProjectJson(await file.text());
           notify(`Opened ${file.name}`);
         } else if (name.endsWith('.svg') || file.type === 'image/svg+xml') {
-          const res = importSvgText(await file.text());
-          if (!res.elements.length) throw new Error('No drawable elements found in this SVG.');
-          const { doc } = getState();
-          if (doc.elements.length === 0) setState({ doc: { ...doc, width: Math.round(res.width), height: Math.round(res.height) } });
-          const els = wrapImport(res.elements, file.name.replace(/\.svg$/i, ''));
-          setState({ scope: null });
-          addElements(els, res.defs);
-          expand(els.filter((e) => e.type === 'group').map((e) => e.id));
-          setState({ sidebarTab: 'layers' });
+          const text = await file.text();
+          const empty = getState().doc.elements.length === 0;
+          const { res } = insertSvg(text, file.name.replace(/\.svg$/i, ''), empty ? 'original' : 'center');
+          if (empty) {
+            const { doc } = getState();
+            setState({ doc: { ...doc, width: Math.round(res.width), height: Math.round(res.height) } });
+          }
+          setState({ leftTab: 'elements' });
           const count = res.elements.length;
           notify(`Imported “${file.name}” as a group of ${count} layer${count > 1 ? 's' : ''}. Double-click it to edit inside.`);
         } else if (file.type.startsWith('image/')) {
-          const url = await readFileAsDataUrl(file);
-          const { w, h } = await imageSize(url);
-          const { doc } = getState();
-          const k = Math.min(1, (doc.width * 0.8) / w, (doc.height * 0.8) / h);
-          setState({ scope: null });
-          addElement(createElement('image', { name: file.name.replace(/\.[^.]+$/, ''), href: url }, {
-            x: doc.width / 2, y: doc.height / 2, width: Math.round(w * k), height: Math.round(h * k),
-          }));
+          await insertImage(await readFileAsDataUrl(file), file.name.replace(/\.[^.]+$/, ''));
           notify(`Imported image ${file.name}`);
         } else {
           throw new Error(`Unsupported file: ${file.name}`);
@@ -129,17 +136,20 @@ export default function App() {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const s = getState();
+      const kfs = s.selectedKfs.length > 0;
       if (mod) {
         if (k === 'z' && !e.shiftKey) undo();
         else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
         else if (k === 'g' && e.shiftKey) ungroupSelection();
         else if (k === 'g') groupSelection();
         else if (k === 'e' && e.shiftKey) exportAnimatedSvg(s.doc);
-        else if (k === 'e') mergeSelection();
-        else if (k === 'd') duplicateSelection();
-        else if (k === 'c') copySelection();
+        else if (k === 'e') setDialog('export');
+        else if (k === 'm') mergeSelection();
+        else if (k === 'o' && e.shiftKey) centerOrigin();
+        else if (k === 'd') (kfs ? duplicateKeyframes() : duplicateSelection());
+        else if (k === 'c') (kfs ? copyKeyframes() : copySelection());
         else if (k === 'x') copySelection(true);
-        else if (k === 'v') paste();
+        else if (k === 'v') (s.kfClipboard.length && (kfs || !s.clipboard.length) ? pasteKeyframes() : paste());
         else if (k === 'a') selectAll();
         else if (k === 's') saveProject(s.doc);
         else if (k === 'o') openRef.current?.click();
@@ -149,12 +159,30 @@ export default function App() {
         e.preventDefault();
         return;
       }
+      if (e.altKey) {
+        if (k === 's') setView({ snap: !s.view.snap });
+        else if (k === 'g') setView({ showGrid: !s.view.showGrid });
+        else if (k === 'r') setView({ showRulers: !s.view.showRulers });
+        else if (k === 'l') setView({ showGuides: !s.view.showGuides });
+        else return;
+        e.preventDefault();
+        return;
+      }
+      if (e.shiftKey && /^[a-z]$/.test(k)) {
+        const a = animatorForShortcut(k);
+        if (a && s.selection.length) {
+          addAnimator(a.id);
+          e.preventDefault();
+        }
+        return;
+      }
       if (e.key === ' ') {
         (document.activeElement as HTMLElement | null)?.blur?.();
         togglePlay();
       } else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelection();
       else if (e.key === 'Escape') {
-        if (s.menu) setState({ menu: null });
+        if (s.pickMotionFor) setState({ pickMotionFor: null });
+        else if (s.menu) setState({ menu: null });
         else if (s.tool !== 'select') setTool('select');
         else if (s.selectedKfs.length) setState({ selectedKfs: [] });
         else if (s.scope) select([s.scope]);
@@ -167,6 +195,7 @@ export default function App() {
       else if (e.key === ',') setTime(s.time - 1 / 30);
       else if (e.key === '.') setTime(s.time + 1 / 30);
       else if (e.key === '?') setDialog('help');
+      else if (e.key === '1') canvasApi.fit();
       else if (e.key.startsWith('Arrow') && s.selection.length) {
         const d = e.shiftKey ? 10 : 1;
         const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0;
@@ -194,7 +223,7 @@ export default function App() {
   const startResize = (e: React.PointerEvent) => {
     const y0 = e.clientY;
     const h0 = tlHeight;
-    const move = (ev: PointerEvent) => setTlHeight(Math.max(120, Math.min(window.innerHeight - 240, h0 - (ev.clientY - y0))));
+    const move = (ev: PointerEvent) => setTlHeight(Math.max(130, Math.min(window.innerHeight - 220, h0 - (ev.clientY - y0))));
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -207,7 +236,7 @@ export default function App() {
 
   return (
     <div
-      className="app"
+      className={`app ${leftOpen ? '' : 'left-closed'} ${rightOpen ? '' : 'right-closed'}`}
       style={{ '--tl-h': `${tlHeight}px` } as React.CSSProperties}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
@@ -223,18 +252,21 @@ export default function App() {
         importFiles(e.dataTransfer.files);
       }}
     >
-      <Header
+      <TopBar
         onOpen={() => openRef.current?.click()}
         onImport={openImport}
-        onPreview={() => setDialog('preview')}
-        onVideo={() => setDialog('video')}
+        onExport={() => setDialog('export')}
         onHelp={() => setDialog('help')}
       />
-      <Sidebar onImport={openImport} />
+      {leftOpen ? <LeftPanel onImport={openImport} /> : (
+        <button className="panel-expander left" onClick={() => setState({ leftOpen: true })} title="Show Elements / Library"><Icon name="chevR" /></button>
+      )}
       <main className="stage">
         <Canvas onImport={openImport} />
       </main>
-      <Inspector />
+      {rightOpen ? <RightPanel /> : (
+        <button className="panel-expander right" onClick={() => setState({ rightOpen: true })} title="Show Properties"><Icon name="chevL" /></button>
+      )}
       <div className="tl-resizer" onPointerDown={startResize} title="Drag to resize the timeline" />
       <Timeline />
 
@@ -242,10 +274,9 @@ export default function App() {
       <input ref={importRef} type="file" accept=".svg,image/svg+xml,image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={(e) => { e.target.files && importFiles(e.target.files); e.target.value = ''; }} />
 
       <ContextMenu />
-      {dialog === 'preview' && <PreviewDialog onClose={() => setDialog(null)} onVideo={() => setDialog('video')} />}
-      {dialog === 'video' && <VideoDialog onClose={() => setDialog(null)} />}
+      {dialog === 'export' && <ExportDialog onClose={() => setDialog(null)} />}
       {dialog === 'help' && <HelpDialog onClose={() => setDialog(null)} />}
-      {showWelcome && !dialog && <WelcomeDialog onImport={openImport} />}
+      {showWelcome && !dialog && <WelcomeDialog onImport={openImport} onTemplates={() => setState({ leftTab: 'templates', leftOpen: true })} />}
       {dropping && <div className="drop-overlay"><div>Drop an SVG, image or Animora project</div></div>}
       {toast && <div className="toast" key={toast.id}>{toast.msg}</div>}
     </div>

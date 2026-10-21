@@ -1,22 +1,40 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { EASING_GROUPS, bezierId, getEasing, type Bezier } from '../engine/easing';
 
 const W = 200;
 const H = 140;
 const PAD_Y = 30;
+const SAVED_KEY = 'animora.easings';
 
-/** Easing dropdown + curve preview; the curve's handles can be dragged to make a custom cubic-bezier. */
+interface SavedEasing {
+  name: string;
+  id: string;
+}
+
+function loadSaved(): SavedEasing[] {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Easing dropdown + curve preview. The curve's handles can be dragged to make a custom cubic-bezier,
+ * which can be saved by name; step easings get a step count and start/end choice.
+ */
 export function EasingEditor({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const e = getEasing(value);
   const svgRef = useRef<SVGSVGElement>(null);
-  const isCustom = value.startsWith('cubic-bezier');
+  const [saved, setSaved] = useState(loadSaved);
+  const isCustom = value.startsWith('cubic-bezier') && !saved.some((s) => s.id === value);
   const bez: Bezier | undefined = e.bezier;
 
   const X = (t: number) => t * W;
   const Y = (v: number) => PAD_Y + (1 - v) * (H - 2 * PAD_Y);
   let d = '';
-  for (let i = 0; i <= 60; i++) {
-    const t = i / 60;
+  for (let i = 0; i <= 80; i++) {
+    const t = i / 80;
     d += `${i ? 'L' : 'M'}${X(t).toFixed(1)} ${Y(e.fn(t)).toFixed(1)}`;
   }
 
@@ -27,7 +45,7 @@ export function EasingEditor({ value, onChange }: { value: string; onChange: (id
     (ev.target as Element).setPointerCapture(ev.pointerId);
     const move = (m: PointerEvent) => {
       const r = svg.getBoundingClientRect();
-      const x = Math.min(1, Math.max(0, ((m.clientX - r.left) / r.width) * 1));
+      const x = Math.min(1, Math.max(0, (m.clientX - r.left) / r.width));
       const yPix = ((m.clientY - r.top) / r.height) * H;
       const y = Math.min(2, Math.max(-1, 1 - (yPix - PAD_Y) / (H - 2 * PAD_Y)));
       const b = [...bez] as Bezier;
@@ -43,18 +61,60 @@ export function EasingEditor({ value, onChange }: { value: string; onChange: (id
     window.addEventListener('pointerup', up);
   };
 
+  const save = () => {
+    const name = prompt('Name this easing', 'My easing')?.trim();
+    if (!name) return;
+    const next = [...saved.filter((s) => s.name !== name), { name, id: value }];
+    setSaved(next);
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const selectValue = e.steps ? 'steps' : isCustom ? 'custom' : value;
+
   return (
     <div className="easing-editor">
-      <select value={isCustom ? 'custom' : e.id} onChange={(ev) => onChange(ev.target.value === 'custom' ? bezierId(bez ?? [0.4, 0, 0.2, 1]) : ev.target.value)}>
-        {EASING_GROUPS.map((g) => (
+      <select
+        value={selectValue}
+        onChange={(ev) => {
+          const v = ev.target.value;
+          if (v === 'custom') onChange(bezierId(bez ?? [0.4, 0, 0.2, 1]));
+          else if (v === 'steps') onChange('steps(4,end)');
+          else onChange(v);
+        }}
+      >
+        {EASING_GROUPS.filter((g) => g.group !== 'Steps').map((g) => (
           <optgroup key={g.group} label={g.group}>
             {g.items.map((it) => (
               <option key={it.id} value={it.id}>{it.label}</option>
             ))}
           </optgroup>
         ))}
-        <option value="custom">Custom cubic-bezier…</option>
+        {saved.length > 0 && (
+          <optgroup label="Saved">
+            {saved.map((s) => <option key={s.name} value={s.id}>{s.name}</option>)}
+          </optgroup>
+        )}
+        <optgroup label="Other">
+          <option value="steps">Steps…</option>
+          <option value="custom">Custom cubic-bezier…</option>
+        </optgroup>
       </select>
+      {e.steps && (
+        <div className="grid2">
+          <label className="mini-field">
+            <span>Steps</span>
+            <input type="number" min={1} max={1000} value={e.steps.n} onChange={(ev) => onChange(`steps(${Math.max(1, Math.min(1000, +ev.target.value || 1))},${e.steps!.start ? 'start' : 'end'})`)} />
+          </label>
+          <select value={e.steps.start ? 'start' : 'end'} onChange={(ev) => onChange(`steps(${e.steps!.n},${ev.target.value})`)}>
+            <option value="start">Step start</option>
+            <option value="end">Step end</option>
+          </select>
+        </div>
+      )}
       <svg ref={svgRef} className="easing-curve" viewBox={`0 0 ${W} ${H}`}>
         <rect x={0} y={Y(1)} width={W} height={Y(0) - Y(1)} className="easing-box" />
         <path d={d} className="easing-path" />
@@ -67,7 +127,21 @@ export function EasingEditor({ value, onChange }: { value: string; onChange: (id
           </g>
         )}
       </svg>
-      {bez && <div className="easing-code" title="Drag the handles to customise">cubic-bezier({bez.map((v) => Math.round(v * 100) / 100).join(', ')})</div>}
+      {bez && (
+        <div className="easing-code">
+          <input
+            key={value}
+            defaultValue={bez.map((v) => Math.round(v * 1000) / 1000).join(', ')}
+            title="Easing function values (x1, y1, x2, y2)"
+            onKeyDown={(ev) => ev.key === 'Enter' && (ev.target as HTMLInputElement).blur()}
+            onBlur={(ev) => {
+              const v = ev.target.value.split(/[\s,]+/).map(Number);
+              if (v.length === 4 && v.every(Number.isFinite)) onChange(bezierId([Math.min(1, Math.max(0, v[0])), v[1], Math.min(1, Math.max(0, v[2])), v[3]]));
+            }}
+          />
+          <button className="btn sm" onClick={save} title="Save this curve to reuse it">Save</button>
+        </div>
+      )}
     </div>
   );
 }
